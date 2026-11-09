@@ -12,7 +12,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 9.2.1
-      - run: unzip -q universal-emc.zip && cd universal-emc && gradle build --stacktrace
+      - run: unzip -q "universal-emc (1).zip"
+      - run: cd universal-emc && gradle build --stacktrace
       - uses: actions/upload-artifact@v4
         if: always()
         with:
