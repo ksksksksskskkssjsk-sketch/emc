@@ -1,4 +1,3 @@
-
 name: build
 
 on:
@@ -20,22 +19,23 @@ jobs:
         run: |
           set -e
           if [ -f build.gradle ]; then
-            echo "PROJ=." >> "$GITHUB_ENV"
+            PROJ=.
           else
-            best=""; bt=0
+            best=""; bt=-1
             while IFS= read -r -d '' f; do
-              t=$(git log -1 --format=%ct -- "$f")
-              t=${t:-0}
+              t=$(git log -1 --format=%ct -- "$f" 2>/dev/null || true); t=${t:-0}
               if [ "$t" -ge "$bt" ]; then bt=$t; best="$f"; fi
-            done < <(find . -maxdepth 2 -name '*.zip' -not -path './.git/*' -print0)
-            [ -n "$best" ] || { echo "No zip and no build.gradle found"; exit 1; }
+            done < <(find . -maxdepth 3 -iname '*.zip' -not -path './.git/*' -not -path './_proj/*' -print0)
+            [ -n "$best" ] || { echo "No build.gradle and no .zip found in the repo"; exit 1; }
             echo "Using zip: $best"
-            rm -rf project && mkdir project
-            unzip -q "$best" -d project
-            g=$(find project -name build.gradle | head -n1)
+            rm -rf _proj && mkdir _proj
+            unzip -q "$best" -d _proj
+            g=$(find _proj -name build.gradle | awk '{print length, $0}' | sort -n | head -n1 | cut -d' ' -f2-)
             [ -n "$g" ] || { echo "No build.gradle inside the zip"; exit 1; }
-            echo "PROJ=$(dirname "$g")" >> "$GITHUB_ENV"
+            PROJ=$(dirname "$g")
           fi
+          echo "Project folder: $PROJ"
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -50,11 +50,9 @@ jobs:
         run: |
           cd "$PROJ"
           ok=0
-          gradle build --stacktrace -PmapMode=intermediary 2>&1 | tee "$GITHUB_WORKSPACE/log-intermediary.txt"
-          [ "${PIPESTATUS[0]}" = 0 ] && ok=1
+          gradle build --stacktrace -PmapMode=layered > "$GITHUB_WORKSPACE/log-layered.txt" 2>&1 && ok=1
           if [ "$ok" = 0 ]; then
-            gradle clean build --stacktrace -PmapMode=layered 2>&1 | tee "$GITHUB_WORKSPACE/log-layered.txt"
-            [ "${PIPESTATUS[0]}" = 0 ] && ok=1
+            gradle clean build --stacktrace -PmapMode=intermediary > "$GITHUB_WORKSPACE/log-intermediary.txt" 2>&1 && ok=1
           fi
           echo "BUILD_OK=$ok" >> "$GITHUB_ENV"
 
@@ -63,11 +61,11 @@ jobs:
         run: |
           {
             if [ "$BUILD_OK" = 1 ]; then echo "## Build SUCCESS"; else echo "## Build FAILED"; fi
-            for f in log-intermediary.txt log-layered.txt; do
+            for f in log-layered.txt log-intermediary.txt; do
               [ -f "$f" ] || continue
               echo "### $f"
               echo '```'
-              grep -E "error:|What went wrong|Could not|cannot find symbol|symbol:|location:" -A2 "$f" | head -70 || true
+              grep -E "error:|What went wrong|Could not|cannot find symbol|symbol:|location:" -A2 "$f" | head -120 || true
               echo '```'
             done
           } >> "$GITHUB_STEP_SUMMARY"
@@ -95,6 +93,7 @@ jobs:
           path: ${{ env.JAR }}
 
       - name: Publish release
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
