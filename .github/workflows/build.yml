@@ -2,7 +2,6 @@ name: build
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -17,14 +16,19 @@ jobs:
           java-version: 21
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.14
 
       - name: Build
         run: |
-          chmod +x ./gradlew
-          ./gradlew build --stacktrace
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew build --stacktrace
+          else
+            gradle build --stacktrace
+          fi
 
       - name: Upload jar
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: uemc-jar
