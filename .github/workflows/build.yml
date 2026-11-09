@@ -1,3 +1,4 @@
+
 name: build
 
 on:
@@ -10,6 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Unzip project
+        run: unzip -q "$(ls *.zip | head -n1)" -d project
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -19,11 +23,14 @@ jobs:
         with:
           gradle-version: 9.2.1
 
-      - name: Build
-        run: gradle build --stacktrace
+      - name: Build (tries two mapping setups)
+        working-directory: project
+        run: |
+          gradle build --stacktrace -PmapMode=intermediary \
+          || gradle build --stacktrace -PmapMode=layered
 
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
           name: uemc-jar
-          path: build/libs/*.jar
+          path: project/build/libs/*.jar
